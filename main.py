@@ -34,11 +34,18 @@ adducts = TL_4sp[["Lipid_ID", "Adduct"]]
 other = TL_4sp[["Lipid_ID", "Lipid_class", "Bulk_structure",
                 "Detailed_structure", "Index_Othermode", "RT"]]
 
-# Annotating data with LIPYD
-annotated_data = lp.AnnotateDataWithLipyd(data=data, adducts=adducts)
-print(annotated_data.head())
-print(len(annotated_data))
+# # Annotating data with LIPYD
+# annotated_data = lp.AnnotateDataWithLipyd(data=data, adducts=adducts)
+# print(annotated_data.head())
+# print(len(annotated_data))
+#
+# # Saving intermediate results
+# annotated_data.to_csv(r'results/lipyd_annotated_data.csv', index=False)
+# other.to_csv(r'results/lipyd_other.csv', index=False)
 
-# Saving intermediate results
-annotated_data.to_csv(r'results/lipyd_annotated_data.csv', index=False)
-other.to_csv(r'results/lipyd_other.csv', index=False)
+
+# Reading intermediate results
+annotated_data = pd.read_csv('results/lipyd_annotated_data.csv', sep=',')
+other = pd.read_csv('results/lipyd_other.csv', sep=',')
+# print(other.head())
+
