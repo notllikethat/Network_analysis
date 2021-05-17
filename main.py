@@ -1,16 +1,44 @@
-# This is a sample Python script.
-
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
+import lipid_preprocessing as lp
+import pandas as pd
 
 
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
+# Reading data
+TL_4sp = pd.read_csv('data/newTL_4sp.txt', sep='\t')
 
 
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    print_hi('PyCharm')
+# Renaming columns
+TL_4sp.columns = ["Lipid_ID", "Lipid_class", "Bulk_structure",
+                  "Detailed_structure", "Adduct", "Index_Othermode", "MZ", "RT"]
 
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+
+# Replacing adducts with supported form
+TL_4sp.loc[TL_4sp["Adduct"] == "M-H+FA", "Adduct"] = "M+HCOO"
+
+# Adding info on modes of the features
+pos_neg_data = pd.read_csv('data/pos_neg_mode.csv', sep='\t')
+TL_4sp = pd.merge(TL_4sp, pos_neg_data, how="left")
+
+
+''' Input should be pd.DataFrame, formatted like this:
+    --- Lipid_ID, MZ, Mode ---
+    where mode should be either "pos" or "neg"
+    
+    If there are adducts, add the parameter adducts.
+    adducts should be pd.DataFrame, formatted like this:
+    --- Lipid_ID, Adduct ---
+'''
+
+# Adjusting input
+data = TL_4sp[["Lipid_ID", "MZ", "Mode"]]
+adducts = TL_4sp[["Lipid_ID", "Adduct"]]
+other = TL_4sp[["Lipid_ID", "Lipid_class", "Bulk_structure",
+                "Detailed_structure", "Index_Othermode", "RT"]]
+
+# Annotating data with LIPYD
+annotated_data = lp.AnnotateDataWithLipyd(data=data, adducts=adducts)
+print(annotated_data.head())
+print(len(annotated_data))
+
+# Saving intermediate results
+annotated_data.to_csv(r'results/lipyd_annotated_data.csv', index=False)
+other.to_csv(r'results/lipyd_other.csv', index=False)
