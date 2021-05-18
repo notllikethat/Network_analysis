@@ -14,6 +14,7 @@ from networkx import *
     This part is dedicated to creating the annotation of the data via lipyd
 '''
 
+
 def AnnotateDataWithLipyd(data, adducts=None):
     positive_data, negative_data = SeparatePosNegModes(data)
 
@@ -104,16 +105,19 @@ def GetRepresentatives(data, curation=None, check_annotation=False):
     levels_data = pd.read_csv("data/levels_data.csv", sep=",")
     levels_data.columns = ["SwissLipids_ID", "Level"]
 
+    print("...Adding levels to data...")
     # Adding levels to data
-    swl_ids = AddingLevelsToData(data, levels_data=levels_data)
+    swl_ids = AddingLevelsToData(data, levels_data)
 
     # Creating graph
-    g = CreateAnnotatedGraph(levels_data=levels_data)
+    g = CreateAnnotatedGraph(levels_data)
 
     # Getting representatives
+    print("...Getting representatives...")
     representatives, more_species, no_species, getting_error = RunDFS(swl_ids, graph=g)
 
-    # Compress results:
+    # Compressing results:
+    print("...Compressing results...")
     if len(getting_error) > 0:
         print("Something went wrong. We got KeyError")
 
@@ -124,24 +128,35 @@ def GetRepresentatives(data, curation=None, check_annotation=False):
         representatives_no_species = GetRepresentativesNoSpecies(no_species=no_species,
                                                                  graph=g,
                                                                  levels=levels_data)
+        representatives = pd.concat([representatives, representatives_no_species])
 
-    representatives = pd.concat([representatives, representatives_no_species])
     representatives = representatives.drop_duplicates()
     representatives = representatives.reset_index(drop=True)
-
-    # Merging results with data
-    representatives = pd.merge(representatives, data, how="left")
-    representatives = representatives[["Representative_ID", "Lipid_ID"]]
-    representatives = representatives.drop_duplicates()
-    representatives = representatives.reset_index(drop=True)
-
-    representatives = GetRepresentativesClasses(representatives)
-
-    # Auto curation check
-    if check_annotation and curation is not None:
-        representatives = CheckAnnotation(representatives, curation)
-
-    return representatives
+    repr_to_swl = representatives
+    return repr_to_swl
+    # # Merging results with data
+    # print("...Merging results with data...")
+    # representatives = pd.merge(representatives, data, how="left")
+    # representatives = representatives[["Representative_ID", "Lipid_ID"]]
+    # representatives = representatives.drop_duplicates()
+    # representatives = representatives.reset_index(drop=True)
+    #
+    # representatives = GetRepresentativesClasses(representatives)
+    #
+    # # Auto curation check
+    # print("...Auto check results from curation...")
+    # if check_annotation and curation is not None:
+    #     representatives = CheckAnnotation(representatives, curation)
+    #
+    # data = data[["Lipid_ID", "Formula", "Modification", "MZ"]]
+    # data = data.drop_duplicates()
+    # data = data.reset_index(drop=True)
+    #
+    # representatives = pd.merge(representatives, data, how="left")
+    # representatives = representatives.drop_duplicates()
+    # representatives = representatives.reset_index(drop=True)
+    #
+    # return representatives, repr_to_swl
 
 
 def CheckAnnotation(representatives, curation):
@@ -160,7 +175,7 @@ def CheckAnnotation(representatives, curation):
     repl["Class_Abbr_SL"] = tmp[0]
     repl = repl[["Class_SwissLipids", "Class_Abbr_SL"]]
 
-    anno = pd.read_csv("Databases_data/full_classes_data_LM_SWL.csv", sep=",")
+    anno = pd.read_csv("data/full_classes_data_LM_SWL.csv", sep=",")
     anno["Annotation"] = anno["Abbreviation_LipidMaps"]
     anno = anno[["SwissLipids_ID", "Annotation", "Class_SwissLipids", "Abbreviation_SwissLipids",
                  "LipidMaps_ID", "Class_LipidMaps", "Abbreviation_LipidMaps", "SwissLipids_name"]]
@@ -187,7 +202,7 @@ def CheckAnnotation(representatives, curation):
                         "Class_Abbr_SL"] = "FA"
 
     representatives = representatives[pre_columns]
-
+    print("Not in index:\n", representatives.columns)
     representatives = representatives[['SwissLipids_ID', 'Lipid_ID', 'Annotation', 'Curation',
                                        'Class_SwissLipids', 'Abbreviation_SwissLipids', 'LipidMaps_ID',
                                        'Class_LipidMaps', 'Abbreviation_LipidMaps', 'SwissLipids_name']]
@@ -209,11 +224,12 @@ def CheckAnnotation(representatives, curation):
 
     # Real check
     representatives["OK"] = "-"
-    representatives.loc[representatives["Annotation"] == representatives["Bulk structure"], "OK"] = "+"
+    representatives.loc[representatives["Annotation"] == representatives["Curation"], "OK"] = "+"
 
     representatives = representatives[representatives.OK == "+"]
 
     representatives = representatives[['Lipid_ID', 'SwissLipids_ID']]
+
     return representatives
 
 
@@ -229,6 +245,11 @@ def GetRepresentativesClasses(representatives):
     annotation.loc[annotation["Annotation"] == "-", "Annotation"] = annotation["SwissLipids_name"]
     annotation = annotation.drop_duplicates()
     annotation = annotation.reset_index(drop=True)
+
+    print("annotation:\n", annotation.head())
+    print(annotation.columns)
+    print("representatives:\n", representatives.head())
+    representatives.columns = ["SwissLipids_ID", "Lipid_ID"]
 
     representatives = pd.merge(representatives, annotation, how="left")
 
@@ -317,8 +338,8 @@ def CreateAnnotatedGraph(levels_data):
 
 def AddingLevelsToData(data, levels_data):
     swl_ids = data.SwissLipids_ID.drop_duplicates().values
-    swl_ids = pd.merge(swl_ids, levels_data, how="left",
-                       left_on="SwissLipids_ID", right_on="SwissLipids_ID")
+    swl_ids = pd.DataFrame({"SwissLipids_ID": list(swl_ids)})
+    swl_ids = pd.merge(swl_ids, levels_data, how="left")
     swl_ids.loc[swl_ids["Level"].isnull(), "Level"] = "-"
     return swl_ids
 
@@ -365,11 +386,95 @@ def GetData(file):
 
 
 ''' 
-    This part is dedicated to getting representatives
+    This part is dedicated to getting lipids from representatives
 '''
 
 
+def RepresentativesToLipids(representatives, repr_to_swl):
+    representatives.columns = ["Lipid_ID", "Representative_ID"]
+    annotated_data = pd.merge(representatives, repr_to_swl)
+    annotated_data = annotated_data[["Lipid_ID", "SwissLipids_ID", "Representative_ID"]]
+    return annotated_data
 
+
+''' 
+    This part is dedicated to getting lipids from representatives
+'''
+
+
+def MappingToGraph(annotated_data):
+    annotated_data["Depth"] = 0
+    annotated_data["Initial_SwissLipids_ID"] = annotated_data["SwissLipids_ID"]
+
+    annotated_data = AddingLevelsToAnnotatedData(annotated_data)
+    annotated_data = InheritingReactions(annotated_data)
+
+    return annotated_data
+
+
+def InheritingReactions(annotated_data):
+    acyclic = pd.read_csv("data/acyclic_graph.csv", sep=",")
+
+    current = annotated_data
+    res = annotated_data
+    depth = 0
+
+    while len(res) > 0:
+        res = GetParents(data=res, acyclic_graph=acyclic, depth=depth)
+        current = pd.concat([current, res])
+        depth += 1
+
+    current = current.drop_duplicates()
+    current = current[current.ChEBI_ID != "-"]
+    current = current.reset_index(drop=True)
+
+    return current
+
+
+def GetParents(data, acyclic_graph, depth):
+    data = data[["Lipid_ID", "ChEBI_ID", "SwissLipids_ID",
+                 "Initial_SwissLipids_ID", "Depth",
+                 "Representative_ID"]]
+
+    merged = pd.merge(left=data, right=acyclic_graph, how='left')
+
+    merged['Checker'] = np.where(merged['Parental_ChEBI_ID'].isnull(), True, False)
+    merged_next = merged.dropna()
+
+    merged_next["Depth"] = depth + 1
+
+    merged_next = merged_next[["Lipid_ID", "Parental_ChEBI_ID", "Parent", "Level",
+                               "Initial_SwissLipids_ID", "Depth",
+                               "Representative_ID"]]
+
+    merged_next.columns = ["Lipid_ID", "ChEBI_ID", "SwissLipids_ID", "Level",
+                           "Initial_SwissLipids_ID", "Depth",
+                           "Representative_ID"]
+    return merged_next
+
+
+def AddingLevelsToAnnotatedData(annotated_data):
+    levels_data = pd.read_csv("data/levels_data.csv", sep=",")
+    levels_data.columns = ["SwissLipids_ID", "Level"]
+
+    annotated_data = pd.merge(annotated_data, levels_data,
+                              how='left',
+                              left_on="SwissLipids_ID",
+                              right_on="SwissLipids_ID")
+
+    lm_ch_pch_swl = pd.read_csv("data/lipidmaps_to_chebi_to_pubchem_to_swisslipids.csv", sep=",")
+    lm_ch_pch_swl = lm_ch_pch_swl[["ChEBI_ID", "SwissLipids_ID"]]
+
+    annotated_data = pd.merge(annotated_data, lm_ch_pch_swl,
+                              how='left',
+                              left_on="SwissLipids_ID",
+                              right_on="SwissLipids_ID")
+
+    annotated_data.loc[annotated_data["Level"].isnull(), "Level"] = "-"
+    annotated_data = annotated_data[["Lipid_ID", "ChEBI_ID", "SwissLipids_ID",
+                                     "Level", "Initial_SwissLipids_ID",
+                                     "Depth", "Representative_ID"]]
+    return annotated_data
 
 
 
